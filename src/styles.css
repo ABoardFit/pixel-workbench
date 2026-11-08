@@ -57,3 +57,17 @@
 @media(max-width:1180px){.joined-control{min-width:216px;flex-basis:216px}.joined-control .board-bottom-actions>button{font-size:8px}.joined-stage-note{font-size:8px}.app-header .header-button{font-size:10px}}
 @media(max-width:720px){.joined-board-controls{padding:7px;gap:7px}.joined-control{min-width:250px;flex:0 0 250px}.joined-control .board-bottom-actions>button{font-size:9px}.joined-viewport{min-height:195px}.joined-stage-note{font-size:8px;top:8px;left:9px}.joined-zoom-field>input{width:44px}}
 .tools-grid .tool-button:last-child{grid-column:auto}.tools-grid .tool-button:last-child>span{font-size:10px}
+.frame-flip-button,.silhouette-flip-button{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #dce4ef;border-radius:4px;color:#6f83a4;background:#f7faff;font-size:10px;padding:7px 5px;margin-top:8px}
+.frame-flip-button:hover:not(:disabled),.silhouette-flip-button:hover{background:#eaf2ff;color:#356ac4}
+.silhouette-step{display:flex;align-items:center;gap:7px;margin-top:15px;font-size:11px}
+.silhouette-step>span{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:4px;background:#e9f1ff;border:1px solid #d4e2fb;color:#4775bf;font-size:9px}
+.silhouette-step.target-step{padding-top:13px;border-top:1px solid #e6edf7;margin-top:13px}
+.silhouette-frame-summary{display:flex;align-items:center;gap:8px;padding:7px;background:#f7f9fc;border:1px solid #e5eaf2;border-radius:5px;margin-top:8px}
+.silhouette-frame-thumb{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:34px;height:36px;overflow:hidden;border:1px solid #dce3ee;border-radius:3px}
+.silhouette-frame-thumb .pixel-preview{width:100%;height:100%;object-fit:contain}
+.silhouette-frame-summary>div{min-width:0;flex:1}
+.silhouette-frame-summary strong{display:block;font-size:9px;font-weight:600;color:#627994;line-height:1.6}
+.silhouette-frame-summary small{display:block;font-size:9px;color:#98a5b7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.silhouette-frame-summary.captured-reference{background:#eef5ff;border-color:#d7e5fa}
+.silhouette-frame-summary.silhouette-target{border-color:#d2e0f4;background:#f4f8ff}
+.joined-viewport:focus:not(:focus-visible){outline:none}

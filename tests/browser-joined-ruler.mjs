@@ -155,7 +155,7 @@ try {
     const nodes = [...document.querySelectorAll('canvas[data-testid^="board-canvas-"]')];
     return nodes.length === 2 && nodes.every((node) => { const box = node.getBoundingClientRect(); return box.left >= viewport.left && box.right <= viewport.right; });
   });
-  const initial = await assertSeams(2);
+  await assertSeams(2);
   assert.equal(await page.getByTestId('canvas-boundary-160').count(), 1, 'one shared seam has exactly one boundary stroke');
   const before = await save();
   assert.deepEqual(before.boards.map((board) => board.frameIndex), [0, 1]);
@@ -175,7 +175,7 @@ try {
   const decodedGif = decompressFrames(parseGIF(baselines.gif.buffer.slice(baselines.gif.byteOffset, baselines.gif.byteOffset + baselines.gif.byteLength)), true);
   decodedGif.forEach((frame, index) => assert.equal(Buffer.compare(Buffer.from(frame.patch), Buffer.from(nativeFrames[index])), 0, 'GIF contains only original pixels'));
   assert.deepEqual(decodedGif.map((frame) => frame.delay), [70, 130]);
-  assert.equal(await page.getByRole('button', { name: '그리기 실행 취소', exact: true }).isEnabled(), false);
+  assert.equal(await page.getByRole('button', { name: /^((그리기|편집) )?실행 취소$/ }).isEnabled(), false);
 
   // A boundary-to-boundary guide crosses the physical seam, in global native pixels.
   await page.getByLabel('색상 HEX').fill('#18b377');
@@ -185,7 +185,7 @@ try {
   const withGuide = await save();
   assert.deepEqual(assetPixels(withGuide), assetPixels(before), 'ruler creates zero pixel changes in every asset frame');
   assert.equal(withGuide.guides.length, 1);
-  assert.equal(await page.getByRole('button', { name: '그리기 실행 취소', exact: true }).isEnabled(), false, 'ruler does not add raster undo entries');
+  assert.equal(await page.getByRole('button', { name: /^((그리기|편집) )?실행 취소$/ }).isEnabled(), true, 'ruler metadata is undoable while all raster buffers stay unchanged');
   const guide = withGuide.guides[0];
   assert.equal(guide.color, '#18b377', 'guide snapshots the currently selected brush RGB');
   assert.equal(await page.locator('[data-testid^="ruler-guide-"]').first().evaluate((line) => getComputedStyle(line).stroke), 'rgb(24, 179, 119)');
@@ -194,8 +194,9 @@ try {
   assert.ok(guide.x2 > 160 && Math.abs(guide.x2 - guide.x1) === Math.abs(guide.y2 - guide.y1), 'Shift guide remains an exact45 diagonal while crossing the seam');
   await alignedGuide(guide);
 
+  const priorWheelWidth = (await geometry())[0].width;
   await page.getByTestId('joined-viewport').hover(); await page.mouse.wheel(0, -100);
-  await page.waitForFunction((width) => document.querySelector('canvas[data-testid^="board-canvas-"]').getBoundingClientRect().width > width, initial[0].width);
+  await page.waitForFunction((width) => document.querySelector('canvas[data-testid^="board-canvas-"]').getBoundingClientRect().width > width, priorWheelWidth);
   const beforePan = await assertSeams(2); await hairline(); await alignedGuide(guide);
   await page.getByRole('button', { name: '화면 이동 (P)', exact: true }).click();
   await dragWorld([80, 80], [88, 84]);
@@ -230,7 +231,7 @@ try {
   await dragWorld([30.5, 30.5], [35.5, 34.5], true);
   const painted = await save();
   assert.notDeepEqual(assetPixels(painted), assetPixels(before), 'ordinary dot line edits actual pixels');
-  await page.getByRole('button', { name: '그리기 실행 취소', exact: true }).click();
+  await page.getByRole('button', { name: /^((그리기|편집) )?실행 취소$/ }).click();
   assert.deepEqual(assetPixels(await save()), assetPixels(before), 'dot-line undo restores every native RGBA byte');
 
   // Layout changes retain the exact physical seam at realistic sprite dimensions.

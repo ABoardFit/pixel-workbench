@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { compositeFrame, floodFill, getBounds, paintStroke, samplePixel, snapLineEnd, snapRulerEnd } from '../src/lib/pixels';
+import { compositeFrame, flipPixelsHorizontal, floodFill, getBounds, paintStroke, samplePixel, snapLineEnd, snapRulerEnd } from '../src/lib/pixels';
 import type { Silhouette } from '../src/types';
 
 describe('native pixel editing', () => {
+  it('mirrors asymmetric odd-width rows with exact RGBA and is a detached, reversible operation', () => {
+    const original = Uint8ClampedArray.from([
+      17, 99, 31, 0, 201, 19, 91, 128, 40, 50, 60, 255,
+      70, 80, 90, 1, 100, 110, 120, 254, 130, 140, 150, 0,
+    ]);
+    const before = original.slice();
+    const flipped = flipPixelsHorizontal(original, 3, 2);
+    expect([...flipped]).toEqual([
+      40, 50, 60, 255, 201, 19, 91, 128, 17, 99, 31, 0,
+      130, 140, 150, 0, 100, 110, 120, 254, 70, 80, 90, 1,
+    ]);
+    expect(flipPixelsHorizontal(flipped, 3, 2)).toEqual(before);
+    expect(original).toEqual(before);
+    expect(flipped.buffer).not.toBe(original.buffer);
+    flipped[0] = 222;
+    expect(original).toEqual(before);
+  });
   it('draws a continuous diagonal including both endpoints without changing neighbors', () => {
     const pixels = new Uint8ClampedArray(7 * 7 * 4);
     paintStroke(pixels, 7, 7, { x: 1, y: 1 }, { x: 5, y: 5 }, [200, 30, 80, 255], 1);

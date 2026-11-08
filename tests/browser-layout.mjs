@@ -49,9 +49,13 @@ try {
   }
   await page.getByLabel('PNG 또는 GIF 파일 선택').setInputFiles({ name: 'qa-160-layout.png', mimeType: 'image/png', buffer: Buffer.from(encode({ width: 160, height: 160, channels: 4, depth: 8, data })) });
   await page.waitForFunction(() => document.querySelector('canvas[data-testid^="board-canvas-"]')?.getBoundingClientRect().width > 160);
+  // Ensure adding a second pane really requires a smaller shared scale.
+  await page.getByLabel('공통 확대 (%)').fill('300');
+  await page.waitForFunction(() => document.querySelector('canvas[data-testid^="board-canvas-"]').getBoundingClientRect().width === 480);
   const [single] = await fits(1);
   await board(1).getByRole('button', { name: '옆에 고정', exact: true }).click();
   const pair = await fits(2);
+  console.log(`Layout widths: single=${single.width}, pair=${pair.map((box) => box.width).join('/')}`);
   assert.ok(single.width > pair[0].width, 'old pane must refit to the narrower two-pane layout');
   assert.equal(pair[0].width, pair[1].width, 'matching 160px images start at matching comparison scales');
   await page.screenshot({ path: path.join(artifacts, 'layout-two-panes.png'), fullPage: true });

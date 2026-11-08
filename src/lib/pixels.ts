@@ -11,6 +11,19 @@ export function samplePixel(pixels: Uint8ClampedArray, width: number, height: nu
   return [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]];
 }
 
+/** Mirror each native row into a new buffer, preserving all RGBA bytes and the original input. */
+export function flipPixelsHorizontal(pixels: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || pixels.length !== width * height * 4) {
+    throw new Error('이미지 크기와 픽셀 수가 맞지 않습니다.');
+  }
+  const result = new Uint8ClampedArray(pixels.length);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const source = (y * width + width - 1 - x) * 4, target = (y * width + x) * 4;
+    for (let channel = 0; channel < 4; channel++) result[target + channel] = pixels[source + channel];
+  }
+  return result;
+}
+
 /** Paint a continuous Bresenham segment in place, clipping brush pixels rather than clamping its center. */
 export function paintStroke(pixels: Uint8ClampedArray, width: number, height: number, from: Point, to: Point, rgba: RGBA, size = 1): void {
   if (![from.x, from.y, to.x, to.y, size].every(Number.isFinite)) return;

@@ -14,13 +14,15 @@ interface Props {
   onCommit: (assetId: string, frameId: string, before: Uint8ClampedArray, after: Uint8ClampedArray) => void;
   onPick: (color: RGBA) => void; onClose: (id: string) => void; onAppend: (board: EditorBoard) => void; onDuplicate: (board: EditorBoard) => void; onCapture: (id: string) => void;
   onOverlayChange: (boardId: string, overlayId: string, patch: Partial<Silhouette>) => void;
+  onOverlayGestureStart: (boardId: string, overlayId: string) => void;
+  onOverlayGestureEnd: (boardId: string, overlayId: string, patch: Partial<Silhouette> | null, cancelled: boolean) => void;
   onGuideAdd: (guide: RulerGuide) => void; onPanGesture: () => void;
 }
 interface Tile { board: EditorBoard; asset: SpriteAsset; frame: PixelFrame; offset: number }
 type Gesture =
   | { kind: 'paint'; tile: Tile; tool: Tool; before: Uint8ClampedArray; pixels: Uint8ClampedArray; start: Point; last: Point }
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
-  | { kind: 'overlay'; boardId: string; id: string; startX: number; startY: number; x: number; y: number }
+  | { kind: 'overlay'; boardId: string; id: string; startX: number; startY: number; x: number; y: number; endX: number; endY: number }
   | { kind: 'ruler'; start: Point; end: Point; color: string };
 
 function PixelCanvas({ tile, draft, revision, zoom, number }: { tile: Tile; draft: Uint8ClampedArray | null; revision: number; zoom: number; number: number }) {
@@ -33,7 +35,7 @@ function PixelCanvas({ tile, draft, revision, zoom, number }: { tile: Tile; draf
 }
 
 export default function JoinedWorkspace(props: Props) {
-  const viewport = useRef<HTMLDivElement>(null), latest = useRef(props), gesture = useRef<Gesture | null>(null);
+  const viewport = useRef<HTMLDivElement>(null), latest = useRef(props), gesture = useRef<Gesture | null>(null), pointerId = useRef<number | null>(null);
   latest.current = props;
   const [revision, setRevision] = useState(0), [cursor, setCursor] = useState<Point | null>(null);
   let offset = 0;
@@ -66,6 +68,18 @@ export default function JoinedWorkspace(props: Props) {
     };
     node.addEventListener('wheel', wheel, { passive: false }); return () => node.removeEventListener('wheel', wheel);
   }, []);
+  useEffect(() => {
+    const abort = () => {
+      const current = gesture.current;
+      if (current?.kind === 'overlay') latest.current.onOverlayGestureEnd(current.boardId, current.id, null, true);
+      gesture.current = null; setRevision(value => value + 1);
+      if (pointerId.current !== null && viewport.current?.hasPointerCapture(pointerId.current)) viewport.current.releasePointerCapture(pointerId.current);
+      pointerId.current = null;
+    };
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && gesture.current) { event.preventDefault(); abort(); } };
+    window.addEventListener('blur', abort); window.addEventListener('keydown', key);
+    return () => { window.removeEventListener('blur', abort); window.removeEventListener('keydown', key); };
+  }, []);
   function world(event: { clientX: number; clientY: number }, boundary = false): Point {
     const rect = viewport.current!.getBoundingClientRect(), round = boundary ? Math.round : Math.floor;
     return { x: round((event.clientX - rect.left - rect.width / 2 - view.panX) / view.zoom + width / 2), y: round((event.clientY - rect.top - rect.height / 2 - view.panY) / view.zoom + height / 2) };
@@ -77,6 +91,7 @@ export default function JoinedWorkspace(props: Props) {
   function tileAt(point: Point) { return tiles.find(tile => point.x >= tile.offset && point.x < tile.offset + tile.asset.width && point.y >= 0 && point.y < tile.asset.height); }
   function pointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0 && event.button !== 1) return;
+    event.currentTarget.focus({ preventScroll: true });
     const point = world(event), tile = tileAt(point);
     if (tile) props.onActivate(tile.board.id);
     if (props.tool === 'pan' || props.spaceHeld || event.button === 1) {
@@ -91,8 +106,9 @@ export default function JoinedWorkspace(props: Props) {
         const selected = board.overlays.find(layer => layer.id === board.selectedOverlayId && layer.visible);
         const layer = selected ?? [...board.overlays].reverse().find(layer => layer.visible && pos.x >= layer.x && pos.y >= layer.y && pos.x < layer.x + layer.width * layer.scale && pos.y < layer.y + layer.height * layer.scale);
         if (!layer) return;
+        props.onOverlayGestureStart(board.id, layer.id);
         props.onPatch(board.id, { selectedOverlayId: layer.id, playing: false });
-        gesture.current = { kind: 'overlay', boardId: board.id, id: layer.id, startX: event.clientX, startY: event.clientY, x: layer.x, y: layer.y };
+        gesture.current = { kind: 'overlay', boardId: board.id, id: layer.id, startX: event.clientX, startY: event.clientY, x: layer.x, y: layer.y, endX: layer.x, endY: layer.y };
       } else {
         event.preventDefault(); props.onPatch(board.id, { playing: false });
         if (props.tool === 'picker') { props.onPick(samplePixel(tile.frame.pixels, tile.asset.width, tile.asset.height, pos.x, pos.y)); return; }
@@ -102,13 +118,13 @@ export default function JoinedWorkspace(props: Props) {
         paintStroke(pixels, tile.asset.width, tile.asset.height, pos, pos, props.tool === 'eraser' ? [0, 0, 0, 0] : props.rgba, props.brushSize); setRevision(value => value + 1);
       }
     }
-    event.currentTarget.setPointerCapture(event.pointerId);
+    pointerId.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId);
   }
   function pointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     const point = world(event, props.tool === 'ruler'); setCursor(point.x >= 0 && point.y >= 0 && point.x <= width && point.y <= height ? point : null);
     const current = gesture.current; if (!current) return;
     if (current.kind === 'pan') { props.onViewChange({ zoom: view.zoom, panX: current.panX + event.clientX - current.startX, panY: current.panY + event.clientY - current.startY }); return; }
-    if (current.kind === 'overlay') { props.onOverlayChange(current.boardId, current.id, { x: Math.round(current.x + (event.clientX - current.startX) / view.zoom), y: Math.round(current.y + (event.clientY - current.startY) / view.zoom) }); return; }
+    if (current.kind === 'overlay') { current.endX = Math.round(current.x + (event.clientX - current.startX) / view.zoom); current.endY = Math.round(current.y + (event.clientY - current.startY) / view.zoom); props.onOverlayChange(current.boardId, current.id, { x: current.endX, y: current.endY }); return; }
     if (current.kind === 'ruler') {
       const raw = world(event, true); current.end = event.shiftKey ? snapRulerEnd(current.start, raw, width, height) : { x: Math.max(0, Math.min(width, raw.x)), y: Math.max(0, Math.min(height, raw.y)) };
     } else {
@@ -126,7 +142,8 @@ export default function JoinedWorkspace(props: Props) {
       if (current.kind === 'paint') props.onCommit(current.tile.asset.id, current.tile.frame.id, current.before, new Uint8ClampedArray(current.pixels));
       if (current.kind === 'ruler' && (current.start.x !== current.end.x || current.start.y !== current.end.y)) props.onGuideAdd({ id: crypto.randomUUID(), x1: current.start.x, y1: current.start.y, x2: current.end.x, y2: current.end.y, color: current.color, visible: true });
     }
-    gesture.current = null; setRevision(value => value + 1); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (current.kind === 'overlay') props.onOverlayGestureEnd(current.boardId, current.id, cancel ? null : { x: current.endX, y: current.endY }, cancel);
+    gesture.current = null; pointerId.current = null; setRevision(value => value + 1); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }
   const draft = gesture.current, selected = activeTile?.board.overlays.find(layer => layer.id === activeTile.board.selectedOverlayId && layer.visible);
   return <div className="joined-workspace">
@@ -137,7 +154,7 @@ export default function JoinedWorkspace(props: Props) {
         <div className="board-bottom-actions"><button type="button" onClick={() => props.onAppend(tile.board)}><Plus size={13} />옆에 고정</button><button type="button" onClick={() => props.onDuplicate(tile.board)}><Copy size={13} />복제해 편집</button><button type="button" onClick={() => props.onCapture(tile.board.id)}><Layers2 size={13} />실루엣 잡기</button></div>
       </article>)}
     </div>
-    <div ref={viewport} className={`joined-viewport tool-${props.spaceHeld ? 'pan' : props.tool}`} data-testid="joined-viewport" style={{ backgroundColor: props.background === 'checker' ? '#1b2029' : props.background }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={event => finish(event)} onPointerCancel={event => finish(event, true)} onPointerLeave={() => setCursor(null)} onContextMenu={event => event.preventDefault()}>
+    <div ref={viewport} tabIndex={0} aria-label="붙임 캔버스 편집 영역" className={`joined-viewport tool-${props.spaceHeld ? 'pan' : props.tool}`} data-testid="joined-viewport" style={{ backgroundColor: props.background === 'checker' ? '#1b2029' : props.background }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={event => finish(event)} onPointerCancel={event => finish(event, true)} onPointerLeave={() => setCursor(null)} onContextMenu={event => event.preventDefault()}>
       <div className={`joined-strip ${props.background === 'checker' ? 'checker-dark' : ''}`} data-testid="joined-strip" style={{ width: width * view.zoom, height: height * view.zoom, transform: `translate(calc(-50% + ${view.panX}px), calc(-50% + ${view.panY}px))` }}>
         {tiles.map((tile, index) => <div key={tile.board.id} className={`joined-tile ${tile.board.id === props.activeBoardId ? 'is-active' : ''}`} data-testid={`board-viewport-${tile.board.id}`} style={{ width: tile.asset.width * view.zoom, height: tile.asset.height * view.zoom }}>
           <PixelCanvas tile={tile} draft={draft?.kind === 'paint' && draft.tile.board.id === tile.board.id && draft.tile.frame.id === tile.frame.id ? draft.pixels : null} revision={revision} zoom={view.zoom} number={index + 1} />

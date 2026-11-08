@@ -9,11 +9,23 @@ assert.ok(source, 'Set TEST_GIF_PATH to a local eight-direction GIF for this opt
 const output = path.resolve(import.meta.dirname, '..', '.test-results', 'workbench-demo.png');
 await fs.mkdir(path.dirname(output), { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
-const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } });
 const page = await context.newPage();
+const baseURL = process.env.TEST_URL || 'http://127.0.0.1:5174/';
+if (process.env.TEST_DIST === '1') {
+  const root = path.resolve(import.meta.dirname, '..'), prefix = new URL(baseURL).pathname.replace(/\/$/, '');
+  await page.route(`${new URL(baseURL).origin}/**`, async (route) => {
+    const relative = decodeURIComponent(new URL(route.request().url()).pathname).slice(prefix.length).replace(/^\/+/, '') || 'index.html';
+    const filename = path.resolve(root, 'dist', relative);
+    assert.ok(filename.startsWith(path.join(root, 'dist') + path.sep));
+    const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+    try { await route.fulfill({ contentType: mime[path.extname(filename)] || 'application/octet-stream', body: await fs.readFile(filename) }); }
+    catch { await route.fulfill({ status: 404, body: 'Not found' }); }
+  });
+}
 const board = (number) => page.getByRole('article', { name: `${number}번 비교 칸`, exact: true });
 try {
-  await page.goto(process.env.TEST_URL || 'http://127.0.0.1:5174/');
+  await page.goto(baseURL);
   await page.getByRole('heading', { name: '도트 작업실', exact: true }).waitFor();
   await page.getByLabel('PNG 또는 GIF 파일 선택').setInputFiles(source);
   await page.getByRole('button', { name: '5번 프레임을 옆에 고정', exact: true }).waitFor();
@@ -44,6 +56,8 @@ try {
   assert.equal(await board(1).getByLabel('1번 칸 프레임 이동').inputValue(), '0');
   assert.equal(await board(2).getByLabel('2번 칸 프레임 이동').inputValue(), '4');
   assert.equal(await opacity.inputValue(), '30');
+  await page.locator('.right-sidebar').evaluate((node) => node.scrollTo({ top: 0 }));
+  await page.locator('.left-sidebar').evaluate((node) => node.scrollTo({ top: 0 }));
   await page.screenshot({ path: output, fullPage: true });
   console.log(`Captured optional local demo: ${output}`);
 } finally {

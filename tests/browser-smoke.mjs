@@ -122,7 +122,7 @@ try {
   const erased = pixels(await exportFile()).data;
   assert.deepEqual(erased.slice(0, 4), [0, 0, 0, 0], 'eraser writes fully transparent pixels');
   assert.deepEqual(erased.slice(4), Array.from(rgbaFixture.data).slice(4), 'eraser only affects the selected native pixel');
-  await page.getByRole('button', { name: '그리기 실행 취소', exact: true }).click();
+  await page.getByRole('button', { name: /^((그리기|편집) )?실행 취소$/ }).click();
   assert.deepEqual(pixels(await exportFile()).data, Array.from(rgbaFixture.data), 'eraser undo restores exact source colors and alpha');
   await page.screenshot({ path: path.join(artifacts, 'editor-loaded.png'), fullPage: true });
 
@@ -136,9 +136,9 @@ try {
   const occupied = [];
   for (let i = 0; i < 28; i++) if (line[i * 4 + 3]) occupied.push(i);
   assert.deepEqual(occupied, [8, 16, 24], 'Shift drag beyond unequal edges keeps exact45 diagonal');
-  await page.getByRole('button', { name: '그리기 실행 취소', exact: true }).click();
+  await page.getByRole('button', { name: /^((그리기|편집) )?실행 취소$/ }).click();
   assert.ok(pixels(await exportFile()).data.every((value) => value === 0), 'undo removes one complete line');
-  await page.getByRole('button', { name: '그리기 다시 실행', exact: true }).click();
+  await page.getByRole('button', { name: /^((그리기|편집) )?다시 실행$/ }).click();
   assert.deepEqual(pixels(await exportFile()).data, line, 'redo restores exact original line');
 
   await reset();
