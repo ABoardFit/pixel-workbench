@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.test-assets/
+.test-results/
+test-results/
+playwright-report/
+.test-profile/
+*.local
+*.tsbuildinfo
+.DS_Store
