@@ -52,7 +52,7 @@ function pixels(pngBytes) {
 }
 
 const board = (number) => page.getByRole('article', { name: `${number}번 비교 칸`, exact: true });
-const canvas = (number) => board(number).locator('canvas');
+const canvas = (number) => page.locator('canvas[data-testid^="board-canvas-"]').nth(number - 1);
 async function activate(number) { await board(number).locator('.board-heading').click(); }
 async function nativePoint(number, x, y) {
   const bounds = await canvas(number).boundingBox();
@@ -61,6 +61,11 @@ async function nativePoint(number, x, y) {
   return { x: bounds.x + (x + 0.5) * bounds.width / size.width, y: bounds.y + (y + 0.5) * bounds.height / size.height };
 }
 async function clickPixel(number, x, y) { const p = await nativePoint(number, x, y); await page.mouse.click(p.x, p.y); }
+async function displayPixel(number, x, y) {
+  const p = await nativePoint(number, x, y), image = decode(await page.screenshot());
+  const offset = (Math.floor(p.y) * image.width + Math.floor(p.x)) * image.channels;
+  return [image.data[offset], image.data[offset + 1], image.data[offset + 2], image.channels === 4 ? image.data[offset + 3] : 255];
+}
 async function drag(number, from, to, shift = false) {
   const a = await nativePoint(number, ...from), b = await nativePoint(number, ...to);
   if (shift) await page.keyboard.down('Shift');
@@ -82,12 +87,12 @@ async function assertValue(locator, expected) {
   assert.equal(await locator.inputValue(), expected);
 }
 async function exportFile(type = 'png', extra = async () => {}) {
-  await page.getByRole('button', { name: '내보내기', exact: true }).click();
+  await page.getByRole('button', { name: '이미지 저장', exact: true }).click();
   await page.locator(`input[name="exportType"][value="${type}"]`).check();
   await extra();
   return download(() => page.getByRole('button', { name: '파일 내려받기', exact: true }).click(), `export-${Date.now()}.${type === 'gif' ? 'gif' : 'png'}`);
 }
-async function save() { return JSON.parse((await download(() => page.getByRole('button', { name: '작업 저장', exact: true }).click(), `project-${Date.now()}.json`)).toString()); }
+async function save() { return JSON.parse((await download(() => page.getByRole('button', { name: '편집 상태 저장', exact: true }).click(), `project-${Date.now()}.json`)).toString()); }
 const frameBytes = (project, asset = 0, frame = 0) => Array.from(Buffer.from(project.assets[asset].frames[frame].pixels, 'base64'));
 async function reset() { await page.reload(); await page.getByRole('heading', { name: '도트 작업실', exact: true }).waitFor(); }
 
@@ -105,13 +110,13 @@ try {
   await page.getByRole('button', { name: '화면 이동 (P)', exact: true }).click();
   await drag(1, [1, 1], [2, 2]);
   const panned = await save();
-  assert.notEqual(panned.boards[0].panX, 0);
+  assert.notEqual(panned.joinedView.panX, 0);
   assert.deepEqual(frameBytes(panned), Array.from(rgbaFixture.data), 'pan never paints pixels');
   await page.getByRole('button', { name: '연필 (B)', exact: true }).click();
-  await board(1).getByRole('button', { name: '화면에 맞춤', exact: true }).click();
-  await board(1).getByRole('button', { name: '100% 보기', exact: true }).click();
+  await page.getByRole('button', { name: '전체 캔버스 화면에 맞춤', exact: true }).click();
+  await page.getByRole('button', { name: '100% 보기', exact: true }).click();
   assert.deepEqual(pixels(await exportFile()).data, Array.from(rgbaFixture.data), 'viewport control clicks never paint');
-  await board(1).getByRole('button', { name: '화면에 맞춤', exact: true }).click();
+  await page.getByRole('button', { name: '전체 캔버스 화면에 맞춤', exact: true }).click();
   await page.getByRole('button', { name: '지우개 (E)', exact: true }).click();
   await clickPixel(1, 0, 0);
   const erased = pixels(await exportFile()).data;
@@ -177,19 +182,16 @@ try {
   await setRange(page.getByLabel('실루엣 불투명도'), 100);
   await page.getByLabel('실루엣 X', { exact: true }).fill('1');
   await page.getByLabel('실루엣 Y', { exact: true }).fill('0');
-  let included = pixels(await exportFile('png', () => page.getByLabel('비교용 실루엣도 포함').check())).data;
-  assert.deepEqual(included.slice(4, 8), [90, 155, 255, 255], 'front silhouette translates in native X/Y');
+  assert.deepEqual(await displayPixel(2, 1, 0), [90, 155, 255, 255], 'front silhouette translates in native X/Y');
   await page.getByLabel('실루엣 Y', { exact: true }).fill('1');
-  included = pixels(await exportFile('png', () => page.getByLabel('비교용 실루엣도 포함').check())).data;
-  assert.deepEqual(included.slice(12, 16), [90, 155, 255, 255], 'silhouette Y moves independently of X');
-  assert.deepEqual(included.slice(4, 8), [255, 0, 0, 255]);
+  assert.deepEqual(await displayPixel(2, 1, 1), [90, 155, 255, 255], 'silhouette Y moves independently of X');
+  assert.deepEqual(await displayPixel(2, 1, 0), [255, 0, 0, 255]);
   await page.getByLabel('실루엣 Y', { exact: true }).fill('0');
   await setRange(page.getByLabel('실루엣 불투명도'), 25);
-  included = pixels(await exportFile('png', () => page.getByLabel('비교용 실루엣도 포함').check())).data;
-  assert.deepEqual(included.slice(4, 8), [214, 39, 64, 255], 'opacity is applied once over the editable image');
+  assert.deepEqual(await displayPixel(2, 1, 0), [214, 39, 64, 255], 'opacity is applied once over the editable image');
   await page.getByLabel('실루엣 앞뒤 순서').selectOption('back');
-  included = pixels(await exportFile('png', () => page.getByLabel('비교용 실루엣도 포함').check())).data;
-  assert.deepEqual(included, frameBytes(edited, 0, 2), 'back silhouette stays behind opaque native pixels');
+  assert.deepEqual(await displayPixel(2, 1, 0), [255, 0, 0, 255], 'back silhouette stays behind opaque native pixels');
+  assert.deepEqual(pixels(await exportFile('png')).data, frameBytes(edited, 0, 2), 'raster PNG always excludes visible comparison aids');
   const saved = await save();
   assert.deepEqual(frameBytes(saved, 0, 2), frameBytes(edited, 0, 2), 'overlay controls do not overwrite editable pixels');
   const gif = await exportFile('gif');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compositeFrame, floodFill, getBounds, paintStroke, samplePixel } from '../src/lib/pixels';
+import { compositeFrame, floodFill, getBounds, paintStroke, samplePixel, snapLineEnd, snapRulerEnd } from '../src/lib/pixels';
 import type { Silhouette } from '../src/types';
 
 describe('native pixel editing', () => {
@@ -51,5 +51,15 @@ describe('native pixel editing', () => {
     };
     const result = compositeFrame(new Uint8ClampedArray(3 * 4), 3, 1, [overlay]);
     expect([...result]).toEqual([255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255]);
+  });
+  it('allows ruler endpoints on the outer grid boundary while paint stops at the last pixel', () => {
+    expect(snapRulerEnd({ x: 0, y: 0 }, { x: 200, y: 200 }, 160, 160)).toEqual({ x: 160, y: 160 });
+    expect(snapLineEnd({ x: 0, y: 0 }, { x: 200, y: 200 }, 160, 160)).toEqual({ x: 159, y: 159 });
+    expect(snapRulerEnd({ x: 160, y: 80 }, { x: 0, y: 80 }, 160, 160)).toEqual({ x: 0, y: 80 });
+  });
+  it('keeps a ruler diagonal exact at unequal edges and spans joined-board seams in global coordinates', () => {
+    expect(snapRulerEnd({ x: 0, y: 0 }, { x: 500, y: 500 }, 320, 160)).toEqual({ x: 160, y: 160 });
+    expect(snapRulerEnd({ x: 120, y: 80 }, { x: 250, y: 81 }, 320, 160)).toEqual({ x: 250, y: 80 });
+    expect(snapRulerEnd({ x: 320, y: 160 }, { x: 0, y: -160 }, 320, 160)).toEqual({ x: 160, y: 0 });
   });
 });

@@ -53,6 +53,11 @@ export function snapLineEnd(start: Point, end: Point, width: number, height: num
   return { x: origin.x + ux * steps, y: origin.y + uy * steps };
 }
 
+/** Snap a ruler on grid boundaries (0..width and 0..height inclusive), without touching artwork. */
+export function snapRulerEnd(start: Point, end: Point, width: number, height: number): Point {
+  return snapLineEnd(start, end, width + 1, height + 1);
+}
+
 /** Iterative four-connected exact RGBA fill. Returns the number of changed pixels. */
 export function floodFill(pixels: Uint8ClampedArray, width: number, height: number, x: number, y: number, rgba: RGBA): number {
   x = Math.floor(x); y = Math.floor(y);

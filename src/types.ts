@@ -1,6 +1,6 @@
 export type RGBA = [number, number, number, number];
 export interface Point { x: number; y: number }
-export type Tool = 'pan' | 'pencil' | 'line' | 'eraser' | 'picker' | 'fill' | 'overlay';
+export type Tool = 'pan' | 'pencil' | 'line' | 'ruler' | 'eraser' | 'picker' | 'fill' | 'overlay';
 export interface PixelFrame {
   id: string;
   pixels: Uint8ClampedArray;
@@ -45,4 +45,15 @@ export interface WorkspaceProject {
   assets: SpriteAsset[];
   boards: EditorBoard[];
   activeBoardId: string | null;
+  guides?: RulerGuide[];
+  joinedView?: { zoom: number; panX: number; panY: number };
+}
+export interface RulerGuide {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  visible: boolean;
 }

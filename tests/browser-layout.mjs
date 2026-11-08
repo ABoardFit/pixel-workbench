@@ -25,13 +25,14 @@ if (process.env.TEST_DIST === '1') {
   });
 }
 const board = (number) => page.getByRole('article', { name: `${number}번 비교 칸`, exact: true });
-const canvas = (number) => board(number).locator('canvas');
+const canvas = (number) => page.locator('canvas[data-testid^="board-canvas-"]').nth(number - 1);
 async function fits(count) {
   await page.waitForFunction((count) => {
-    const boards = [...document.querySelectorAll('.editor-board')];
-    return boards.length === count && boards.every((board) => {
-      const viewport = board.querySelector('.board-viewport').getBoundingClientRect();
-      const canvas = board.querySelector('canvas').getBoundingClientRect();
+    const canvases = [...document.querySelectorAll('canvas[data-testid^="board-canvas-"]')];
+    const viewport = document.querySelector('[data-testid="joined-viewport"]').getBoundingClientRect();
+    return canvases.length === count && canvases.every((node, index) => {
+      const canvas = node.getBoundingClientRect();
+      if (index && Math.abs(canvases[index - 1].getBoundingClientRect().right - canvas.left) > 1) return false;
       return canvas.left >= viewport.left && canvas.right <= viewport.right && canvas.top >= viewport.top && canvas.bottom <= viewport.bottom;
     });
   }, count, { timeout: 5000 });
@@ -47,7 +48,7 @@ try {
     if (x < 2 || y < 2 || x >= 158 || y >= 158 || (x >= 60 && x < 100)) data.set([43, 113, 221, 255], (y * 160 + x) * 4);
   }
   await page.getByLabel('PNG 또는 GIF 파일 선택').setInputFiles({ name: 'qa-160-layout.png', mimeType: 'image/png', buffer: Buffer.from(encode({ width: 160, height: 160, channels: 4, depth: 8, data })) });
-  await page.waitForFunction(() => document.querySelector('.editor-board canvas')?.getBoundingClientRect().width > 160);
+  await page.waitForFunction(() => document.querySelector('canvas[data-testid^="board-canvas-"]')?.getBoundingClientRect().width > 160);
   const [single] = await fits(1);
   await board(1).getByRole('button', { name: '옆에 고정', exact: true }).click();
   const pair = await fits(2);
@@ -55,10 +56,10 @@ try {
   assert.equal(pair[0].width, pair[1].width, 'matching 160px images start at matching comparison scales');
   await page.screenshot({ path: path.join(artifacts, 'layout-two-panes.png'), fullPage: true });
 
-  await board(1).locator('.board-viewport').hover();
+  await page.getByTestId('joined-viewport').hover();
   await page.mouse.wheel(0, -100);
-  await page.waitForFunction((width) => document.querySelectorAll('.editor-board canvas')[0].getBoundingClientRect().width > width, pair[0].width);
-  assert.equal((await canvas(2).boundingBox()).width, pair[1].width, 'subsequent zoom remains independent in the other pane');
+  await page.waitForFunction((width) => document.querySelector('canvas[data-testid^="board-canvas-"]').getBoundingClientRect().width > width, pair[0].width);
+  assert.equal((await canvas(2).boundingBox()).width, (await canvas(1).boundingBox()).width, 'zoom stays shared across the continuous strip');
 
   await board(2).getByRole('button', { name: '2번 칸 닫기', exact: true }).click();
   const [reopened] = await fits(1);
@@ -67,7 +68,7 @@ try {
   const copies = await fits(2);
   assert.equal(copies[0].width, copies[1].width, 'independent duplicate also refits all comparison panes');
   assert.deepEqual(errors, []);
-  console.log('PASS: 160px image refits every pane after pin, close and independent duplicate; later per-pane zoom stays independent.');
+  console.log('PASS: touching 160px images refit after pin, close and independent duplicate; pan/zoom belongs to the shared strip.');
 } catch (error) {
   await page.screenshot({ path: path.join(artifacts, 'layout-failure.png'), fullPage: true }).catch(() => {});
   throw error;

@@ -1,4 +1,4 @@
-import type { EditorBoard, PixelFrame, Silhouette, SpriteAsset, WorkspaceProject } from '../types';
+import type { EditorBoard, PixelFrame, RulerGuide, Silhouette, SpriteAsset, WorkspaceProject } from '../types';
 
 const MAX_TOTAL_BYTES = 268_435_456;
 const MAX_ITEMS = 2048;
@@ -125,7 +125,35 @@ export function deserializeProject(jsonText: string): WorkspaceProject {
     };
   });
   unique(boards.map((board) => board.id), '보드');
+  // Optional v1 metadata: guides live in joined-workspace coordinates and never
+  // enter an asset's RGBA buffer. Keep guides outside the current board extent
+  // so temporarily removing or rearranging boards does not discard them.
+  const guides: RulerGuide[] | undefined = root.guides === undefined ? undefined : list(root.guides, '눈금선').map((item) => {
+    const guide = record(item, '눈금선'), color = text(guide.color, '눈금선 색');
+    if (!/^#[0-9a-f]{6}$/i.test(color)) fail('눈금선 색은 HEX 색상이어야 합니다.');
+    return {
+      id: text(guide.id, '눈금선 식별자'),
+      x1: numeric(guide.x1, '눈금선 시작 X', -1_000_000, 1_000_000),
+      y1: numeric(guide.y1, '눈금선 시작 Y', -1_000_000, 1_000_000),
+      x2: numeric(guide.x2, '눈금선 끝 X', -1_000_000, 1_000_000),
+      y2: numeric(guide.y2, '눈금선 끝 Y', -1_000_000, 1_000_000),
+      color, visible: boolean(guide.visible, '눈금선 표시'),
+    };
+  });
+  if (guides) unique(guides.map((guide) => guide.id), '눈금선');
+  let joinedView: WorkspaceProject['joinedView'];
+  if (root.joinedView !== undefined) {
+    const view = record(root.joinedView, '이어 보기');
+    joinedView = {
+      zoom: numeric(view.zoom, '이어 보기 확대 배율', 0.05, 256),
+      panX: numeric(view.panX, '이어 보기 이동 X', -1_000_000, 1_000_000),
+      panY: numeric(view.panY, '이어 보기 이동 Y', -1_000_000, 1_000_000),
+    };
+  }
   const activeBoardId = root.activeBoardId === null ? null : text(root.activeBoardId, '활성 보드');
   if (activeBoardId !== null && !boards.some((board) => board.id === activeBoardId)) fail('활성 보드를 찾을 수 없습니다.');
-  return { version: 1, assets, boards, activeBoardId };
+  const project: WorkspaceProject = { version: 1, assets, boards, activeBoardId };
+  if (guides !== undefined) project.guides = guides;
+  if (joinedView !== undefined) project.joinedView = joinedView;
+  return project;
 }

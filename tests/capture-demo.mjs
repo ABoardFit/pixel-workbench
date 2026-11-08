@@ -26,10 +26,19 @@ try {
   await opacity.focus(); await opacity.press('Home');
   for (let step = 0; step < 30; step++) await opacity.press('ArrowRight');
   await page.getByLabel('실루엣 앞뒤 순서').selectOption('front');
+  await page.getByLabel('색상 HEX').fill('#e53986');
+  await page.getByRole('button', { name: '룰러(자) (R)', exact: true }).click();
+  const firstCanvas = page.locator('canvas[data-testid^="board-canvas-"]').first();
+  const bounds = await firstCanvas.boundingBox(), nativeWidth = await firstCanvas.evaluate((node) => node.width), zoom = bounds.width / nativeWidth;
+  await page.mouse.move(bounds.x + 20 * zoom, bounds.y + 70 * zoom); await page.mouse.down();
+  await page.mouse.move(bounds.x + 300 * zoom, bounds.y + 70 * zoom, { steps: 10 }); await page.mouse.up();
+  await page.locator('[data-testid^="ruler-guide-"]').first().waitFor();
+  assert.equal(await page.locator('[data-testid^="ruler-guide-"]').first().getAttribute('stroke'), '#e53986');
+  await board(2).locator('.board-heading').click();
   const dismiss = page.getByRole('button', { name: '알림 닫기', exact: true });
   if (await dismiss.isVisible()) await dismiss.click();
-  await page.waitForFunction(() => [...document.querySelectorAll('.editor-board')].length === 2 && [...document.querySelectorAll('.editor-board')].every((board) => {
-    const viewport = board.querySelector('.board-viewport').getBoundingClientRect(), canvas = board.querySelector('canvas').getBoundingClientRect();
+  await page.waitForFunction(() => [...document.querySelectorAll('canvas[data-testid^="board-canvas-"]')].length === 2 && [...document.querySelectorAll('canvas[data-testid^="board-canvas-"]')].every((node) => {
+    const viewport = document.querySelector('[data-testid="joined-viewport"]').getBoundingClientRect(), canvas = node.getBoundingClientRect();
     return canvas.left >= viewport.left && canvas.right <= viewport.right && canvas.top >= viewport.top && canvas.bottom <= viewport.bottom;
   }));
   assert.equal(await board(1).getByLabel('1번 칸 프레임 이동').inputValue(), '0');
