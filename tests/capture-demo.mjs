@@ -32,7 +32,7 @@ try {
   const bounds = await firstCanvas.boundingBox(), nativeWidth = await firstCanvas.evaluate((node) => node.width), zoom = bounds.width / nativeWidth;
   await page.mouse.move(bounds.x + 20 * zoom, bounds.y + 70 * zoom); await page.mouse.down();
   await page.mouse.move(bounds.x + 300 * zoom, bounds.y + 70 * zoom, { steps: 10 }); await page.mouse.up();
-  await page.locator('[data-testid^="ruler-guide-"]').first().waitFor();
+  await page.locator('[data-testid^="ruler-guide-"]').first().waitFor({ state: 'attached' });
   assert.equal(await page.locator('[data-testid^="ruler-guide-"]').first().getAttribute('stroke'), '#e53986');
   await board(2).locator('.board-heading').click();
   const dismiss = page.getByRole('button', { name: '알림 닫기', exact: true });
