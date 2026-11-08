@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Crosshair, Layers2, Maximize, Pause, Play, Plus, X } from 'lucide-react';
 import type { EditorBoard, PixelFrame, Point, RGBA, RulerGuide, Silhouette, SpriteAsset, Tool } from '../types';
-import { compositeFrame, floodFill, paintStroke, samplePixel, snapLineEnd, snapRulerEnd } from '../lib/pixels';
+import { compositeFrame, floodFill, getBounds, paintStroke, samplePixel, snapLineEnd, snapRulerEnd, translatePixels } from '../lib/pixels';
 import { IconButton } from './UI';
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
   fitRequestKey: string; onFitDone: () => void;
   onViewChange: (view: { zoom: number; panX: number; panY: number }) => void;
   onActivate: (id: string) => void; onPatch: (id: string, patch: Partial<EditorBoard>) => void;
-  onCommit: (assetId: string, frameId: string, before: Uint8ClampedArray, after: Uint8ClampedArray) => void;
+  onCommit: (assetId: string, frameId: string, before: Uint8ClampedArray, after: Uint8ClampedArray, label?: string) => void;
   onPick: (color: RGBA) => void; onClose: (id: string) => void; onAppend: (board: EditorBoard) => void; onDuplicate: (board: EditorBoard) => void; onCapture: (id: string) => void;
   onOverlayChange: (boardId: string, overlayId: string, patch: Partial<Silhouette>) => void;
   onOverlayGestureStart: (boardId: string, overlayId: string) => void;
@@ -21,6 +21,7 @@ interface Props {
 interface Tile { board: EditorBoard; asset: SpriteAsset; frame: PixelFrame; offset: number }
 type Gesture =
   | { kind: 'paint'; tile: Tile; tool: Tool; before: Uint8ClampedArray; pixels: Uint8ClampedArray; start: Point; last: Point }
+  | { kind: 'move'; tile: Tile; before: Uint8ClampedArray; pixels: Uint8ClampedArray; startX: number; startY: number; zoom: number; bounds: NonNullable<ReturnType<typeof getBounds>>; dx: number; dy: number }
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
   | { kind: 'overlay'; boardId: string; id: string; startX: number; startY: number; x: number; y: number; endX: number; endY: number }
   | { kind: 'ruler'; start: Point; end: Point; color: string };
@@ -93,7 +94,8 @@ export default function JoinedWorkspace(props: Props) {
     if (event.button !== 0 && event.button !== 1) return;
     event.currentTarget.focus({ preventScroll: true });
     const point = world(event), tile = tileAt(point);
-    if (tile) props.onActivate(tile.board.id);
+    const overlayMode = props.tool !== 'move' && (props.tool === 'overlay' || event.altKey);
+    if (tile && !overlayMode) props.onActivate(tile.board.id);
     if (props.tool === 'pan' || props.spaceHeld || event.button === 1) {
       event.preventDefault(); props.onPanGesture(); gesture.current = { kind: 'pan', startX: event.clientX, startY: event.clientY, panX: view.panX, panY: view.panY };
     } else if (props.tool === 'ruler') {
@@ -102,10 +104,18 @@ export default function JoinedWorkspace(props: Props) {
     } else {
       if (!tile) return;
       const pos = local(point, tile, true), board = tile.board;
-      if (props.tool === 'overlay' || event.altKey) {
-        const selected = board.overlays.find(layer => layer.id === board.selectedOverlayId && layer.visible);
-        const layer = selected ?? [...board.overlays].reverse().find(layer => layer.visible && pos.x >= layer.x && pos.y >= layer.y && pos.x < layer.x + layer.width * layer.scale && pos.y < layer.y + layer.height * layer.scale);
+      if (props.tool === 'move') {
+        const bounds = getBounds(tile.frame.pixels, tile.asset.width, tile.asset.height); if (!bounds) return;
+        event.preventDefault(); props.onPatch(board.id, { playing: false, selectedOverlayId: null });
+        const before = new Uint8ClampedArray(tile.frame.pixels);
+        gesture.current = { kind: 'move', tile, before, pixels: new Uint8ClampedArray(before), startX: event.clientX, startY: event.clientY, zoom: view.zoom, bounds, dx: 0, dy: 0 };
+        setRevision(value => value + 1);
+      } else if (overlayMode) {
+        // A board click can change the destination, but never chooses another layer implicitly.
+        if (board.id !== activeTile?.board.id) { props.onActivate(board.id); return; }
+        const layer = board.overlays.find(layer => layer.id === board.selectedOverlayId && layer.visible);
         if (!layer) return;
+        event.preventDefault();
         props.onOverlayGestureStart(board.id, layer.id);
         props.onPatch(board.id, { selectedOverlayId: layer.id, playing: false });
         gesture.current = { kind: 'overlay', boardId: board.id, id: layer.id, startX: event.clientX, startY: event.clientY, x: layer.x, y: layer.y, endX: layer.x, endY: layer.y };
@@ -125,6 +135,15 @@ export default function JoinedWorkspace(props: Props) {
     const current = gesture.current; if (!current) return;
     if (current.kind === 'pan') { props.onViewChange({ zoom: view.zoom, panX: current.panX + event.clientX - current.startX, panY: current.panY + event.clientY - current.startY }); return; }
     if (current.kind === 'overlay') { current.endX = Math.round(current.x + (event.clientX - current.startX) / view.zoom); current.endY = Math.round(current.y + (event.clientY - current.startY) / view.zoom); props.onOverlayChange(current.boardId, current.id, { x: current.endX, y: current.endY }); return; }
+    if (current.kind === 'move') {
+      const { bounds, tile } = current;
+      const dx = Math.max(-bounds.x, Math.min(tile.asset.width - bounds.x - bounds.width, Math.round((event.clientX - current.startX) / current.zoom)));
+      const dy = Math.max(-bounds.y, Math.min(tile.asset.height - bounds.y - bounds.height, Math.round((event.clientY - current.startY) / current.zoom)));
+      if (dx === current.dx && dy === current.dy) return;
+      current.dx = dx; current.dy = dy;
+      current.pixels = translatePixels(current.before, tile.asset.width, tile.asset.height, dx, dy);
+      setRevision(value => value + 1); return;
+    }
     if (current.kind === 'ruler') {
       const raw = world(event, true); current.end = event.shiftKey ? snapRulerEnd(current.start, raw, width, height) : { x: Math.max(0, Math.min(width, raw.x)), y: Math.max(0, Math.min(height, raw.y)) };
     } else {
@@ -140,6 +159,7 @@ export default function JoinedWorkspace(props: Props) {
     if (!cancel) {
       pointerMove(event);
       if (current.kind === 'paint') props.onCommit(current.tile.asset.id, current.tile.frame.id, current.before, new Uint8ClampedArray(current.pixels));
+      if (current.kind === 'move') props.onCommit(current.tile.asset.id, current.tile.frame.id, current.before, new Uint8ClampedArray(current.pixels), '그림 전체 이동');
       if (current.kind === 'ruler' && (current.start.x !== current.end.x || current.start.y !== current.end.y)) props.onGuideAdd({ id: crypto.randomUUID(), x1: current.start.x, y1: current.start.y, x2: current.end.x, y2: current.end.y, color: current.color, visible: true });
     }
     if (current.kind === 'overlay') props.onOverlayGestureEnd(current.boardId, current.id, cancel ? null : { x: current.endX, y: current.endY }, cancel);
@@ -157,7 +177,7 @@ export default function JoinedWorkspace(props: Props) {
     <div ref={viewport} tabIndex={0} aria-label="붙임 캔버스 편집 영역" className={`joined-viewport tool-${props.spaceHeld ? 'pan' : props.tool}`} data-testid="joined-viewport" style={{ backgroundColor: props.background === 'checker' ? '#1b2029' : props.background }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={event => finish(event)} onPointerCancel={event => finish(event, true)} onPointerLeave={() => setCursor(null)} onContextMenu={event => event.preventDefault()}>
       <div className={`joined-strip ${props.background === 'checker' ? 'checker-dark' : ''}`} data-testid="joined-strip" style={{ width: width * view.zoom, height: height * view.zoom, transform: `translate(calc(-50% + ${view.panX}px), calc(-50% + ${view.panY}px))` }}>
         {tiles.map((tile, index) => <div key={tile.board.id} className={`joined-tile ${tile.board.id === props.activeBoardId ? 'is-active' : ''}`} data-testid={`board-viewport-${tile.board.id}`} style={{ width: tile.asset.width * view.zoom, height: tile.asset.height * view.zoom }}>
-          <PixelCanvas tile={tile} draft={draft?.kind === 'paint' && draft.tile.board.id === tile.board.id && draft.tile.frame.id === tile.frame.id ? draft.pixels : null} revision={revision} zoom={view.zoom} number={index + 1} />
+          <PixelCanvas tile={tile} draft={(draft?.kind === 'paint' || draft?.kind === 'move') && draft.tile.board.id === tile.board.id && draft.tile.frame.id === tile.frame.id ? draft.pixels : null} revision={revision} zoom={view.zoom} number={index + 1} />
           {props.grid && view.zoom >= 5 && <div className="pixel-grid" style={{ backgroundSize: `${view.zoom}px ${view.zoom}px` }} />}
         </div>)}
         {selected && activeTile && <div className="overlay-selection joined-overlay-selection" style={{ left: (activeTile.offset + selected.x) * view.zoom, top: selected.y * view.zoom, width: selected.width * selected.scale * view.zoom, height: selected.height * selected.scale * view.zoom }} />}

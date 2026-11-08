@@ -71,3 +71,8 @@
 .silhouette-frame-summary.captured-reference{background:#eef5ff;border-color:#d7e5fa}
 .silhouette-frame-summary.silhouette-target{border-color:#d2e0f4;background:#f4f8ff}
 .joined-viewport:focus:not(:focus-visible){outline:none}
+.tools-grid .tool-button.tool-move{grid-column:1/-1}
+.tools-grid .tool-button.tool-move>span{font-size:11px}
+.joined-viewport.tool-move{cursor:move}
+.selected-layer-target{font-size:9px;color:#6c83a4;line-height:1.6;margin:-4px 0 11px;overflow-wrap:anywhere}
+.tool-hint{overflow-wrap:anywhere}

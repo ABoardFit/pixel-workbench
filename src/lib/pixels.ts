@@ -24,6 +24,25 @@ export function flipPixelsHorizontal(pixels: Uint8ClampedArray, width: number, h
   return result;
 }
 
+/** Translate whole pixels into a new buffer; clip outside pixels and leave exposed space transparent black. */
+export function translatePixels(pixels: Uint8ClampedArray, width: number, height: number, dx: number, dy: number): Uint8ClampedArray {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || pixels.length !== width * height * 4) {
+    throw new Error('이미지 크기와 픽셀 수가 맞지 않습니다.');
+  }
+  if (!Number.isInteger(dx) || !Number.isInteger(dy)) throw new Error('이동 거리는 정수 픽셀이어야 합니다.');
+  const result = new Uint8ClampedArray(pixels.length);
+  const copyWidth = width - Math.abs(dx), copyHeight = height - Math.abs(dy);
+  if (copyWidth <= 0 || copyHeight <= 0) return result;
+  const sourceX = Math.max(0, -dx), sourceY = Math.max(0, -dy);
+  const targetX = Math.max(0, dx), targetY = Math.max(0, dy);
+  for (let row = 0; row < copyHeight; row++) {
+    const source = ((sourceY + row) * width + sourceX) * 4;
+    const target = ((targetY + row) * width + targetX) * 4;
+    result.set(pixels.subarray(source, source + copyWidth * 4), target);
+  }
+  return result;
+}
+
 /** Paint a continuous Bresenham segment in place, clipping brush pixels rather than clamping its center. */
 export function paintStroke(pixels: Uint8ClampedArray, width: number, height: number, from: Point, to: Point, rgba: RGBA, size = 1): void {
   if (![from.x, from.y, to.x, to.y, size].every(Number.isFinite)) return;

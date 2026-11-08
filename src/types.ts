@@ -1,6 +1,6 @@
 export type RGBA = [number, number, number, number];
 export interface Point { x: number; y: number }
-export type Tool = 'pan' | 'pencil' | 'line' | 'ruler' | 'eraser' | 'picker' | 'fill' | 'overlay';
+export type Tool = 'pan' | 'move' | 'pencil' | 'line' | 'ruler' | 'eraser' | 'picker' | 'fill' | 'overlay';
 export interface PixelFrame {
   id: string;
   pixels: Uint8ClampedArray;

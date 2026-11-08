@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compositeFrame, flipPixelsHorizontal, floodFill, getBounds, paintStroke, samplePixel, snapLineEnd, snapRulerEnd } from '../src/lib/pixels';
+import { compositeFrame, flipPixelsHorizontal, floodFill, getBounds, paintStroke, samplePixel, snapLineEnd, snapRulerEnd, translatePixels } from '../src/lib/pixels';
 import type { Silhouette } from '../src/types';
 
 describe('native pixel editing', () => {
@@ -78,5 +78,64 @@ describe('native pixel editing', () => {
     expect(snapRulerEnd({ x: 0, y: 0 }, { x: 500, y: 500 }, 320, 160)).toEqual({ x: 160, y: 160 });
     expect(snapRulerEnd({ x: 120, y: 80 }, { x: 250, y: 81 }, 320, 160)).toEqual({ x: 250, y: 80 });
     expect(snapRulerEnd({ x: 320, y: 160 }, { x: 0, y: -160 }, 320, 160)).toEqual({ x: 160, y: 0 });
+  });
+});
+
+describe('whole-pixel translation', () => {
+  const a = [11, 22, 33, 0], b = [201, 19, 91, 128], c = [40, 50, 60, 255];
+  const d = [70, 80, 90, 254], e = [100, 110, 120, 1], f = [130, 140, 150, 0];
+  const g = [21, 31, 41, 255], h = [51, 61, 71, 63], i = [81, 91, 101, 192];
+  const empty = [0, 0, 0, 0];
+  const image = () => Uint8ClampedArray.from([a, b, c, d, e, f, g, h, i].flat());
+
+  it('moves right and down with exact hidden RGB and partial alpha, leaving transparent exposed edges', () => {
+    const source = image(), before = source.slice();
+    const translated = translatePixels(source, 3, 3, 1, 1);
+    expect([...translated]).toEqual([
+      empty, empty, empty,
+      empty, a, b,
+      empty, d, e,
+    ].flat());
+    expect(source).toEqual(before);
+    expect(translated.buffer).not.toBe(source.buffer);
+  });
+  it('moves left and up and clips the correct opposite edges without changing channels', () => {
+    const source = image(), before = source.slice();
+    expect([...translatePixels(source, 3, 3, -1, -1)]).toEqual([
+      e, f, empty,
+      h, i, empty,
+      empty, empty, empty,
+    ].flat());
+    expect(source).toEqual(before);
+  });
+  it('never wraps a clipped row into the next row when moving horizontally', () => {
+    expect([...translatePixels(image(), 3, 3, 1, 0)]).toEqual([
+      empty, a, b,
+      empty, d, e,
+      empty, g, h,
+    ].flat());
+    expect([...translatePixels(image(), 3, 3, -1, 0)]).toEqual([
+      b, c, empty,
+      e, f, empty,
+      h, i, empty,
+    ].flat());
+  });
+  it('returns a detached exact copy for a zero delta', () => {
+    const source = image(), translated = translatePixels(source, 3, 3, 0, 0);
+    expect(translated).toEqual(source);
+    expect(translated.buffer).not.toBe(source.buffer);
+    translated[0] = 222;
+    expect(source[0]).toBe(11);
+  });
+  it.each([[3, 0], [-3, 0], [0, 3], [0, -3], [9, -20]])('returns a transparent canvas when the image is moved entirely outside (%i,%i)', (dx, dy) => {
+    const source = image(), before = source.slice();
+    expect(translatePixels(source, 3, 3, dx, dy)).toEqual(new Uint8ClampedArray(3 * 3 * 4));
+    expect(source).toEqual(before);
+  });
+  it.each([[0.5, 0], [0, -0.5], [Number.NaN, 0], [0, Number.POSITIVE_INFINITY]])('rejects a noninteger delta instead of resampling artwork (%s,%s)', (dx, dy) => {
+    expect(() => translatePixels(image(), 3, 3, dx, dy)).toThrow(/정수 픽셀/);
+  });
+  it('rejects dimensions that do not match the RGBA buffer', () => {
+    expect(() => translatePixels(image(), 4, 3, 0, 0)).toThrow(/크기와 픽셀 수/);
   });
 });

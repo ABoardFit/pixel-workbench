@@ -37,7 +37,10 @@ let serial = 0;
 async function save() {
   const pending = page.waitForEvent('download'); await page.getByRole('button', { name: '편집 상태 저장', exact: true }).click();
   const download = await pending, filename = path.join(artifacts, `shortcuts-${++serial}.json`);
-  await download.saveAs(filename); return JSON.parse(await fs.readFile(filename, 'utf8'));
+  await download.saveAs(filename);
+  // Avoid bursts of repeated state downloads while exercising keyboard history.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  return JSON.parse(await fs.readFile(filename, 'utf8'));
 }
 async function reset() {
   await page.goto(baseURL); await page.getByRole('heading', { name: '도트 작업실', exact: true }).waitFor();
@@ -70,7 +73,7 @@ function mirroredBase64(data, width, height) {
 try {
   await reset();
   const initial = await save();
-  for (const name of ['화면 이동 (P)', '연필 (B)', '직선 (L)', '룰러(자) (R)', '지우개 (E)', '스포이트 (I)', '채우기 (F)', '실루엣 이동 (O)']) {
+  for (const name of ['화면 이동 (P)', '그림 전체 이동 (V)', '연필 (B)', '직선 (L)', '룰러(자) (R)', '지우개 (E)', '스포이트 (I)', '채우기 (F)', '실루엣 이동 (O)']) {
     const before = await save(), button = await tool(name);
     assert.equal(await button.evaluate((node) => node === document.activeElement), true, 'regression setup leaves focus on the selected toolbar button');
     await page.keyboard.down('Space'); await drag([80, 80], [86, 84]); await page.keyboard.up('Space');
@@ -219,7 +222,7 @@ try {
   assert.deepEqual(overlays(await save()), overlays(maskBefore), 'double silhouette flip is the exact identity');
   await page.screenshot({ path: path.join(artifacts, 'shortcuts-history.png'), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('PASS: focused-toolbar Space pan for all8 tools, CtrlZ/CtrlAltZ mixed timeline, native input undo, guide/silhouette history, fractional corner snapping and clean pixels.');
+  console.log('PASS: focused-toolbar Space pan for all9 tools, CtrlZ/CtrlAltZ mixed timeline, native input undo, guide/silhouette history, fractional corner snapping and clean pixels.');
 } catch (error) {
   await page.screenshot({ path: path.join(artifacts, 'shortcuts-failure.png'), fullPage: true }).catch(() => {});
   throw error;
