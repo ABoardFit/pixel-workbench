@@ -50,6 +50,24 @@ async function gesture(from, moves, cancel = false) {
   if (cancel) await page.keyboard.press('Escape');
   await page.mouse.up();
 }
+async function shiftGesture(delta, preview, shiftOnMove, shiftOnDrop) {
+  const start = await point(60, 60);
+  const end = await point(60 + delta[0], 60 + delta[1]);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  if (shiftOnMove) await page.keyboard.down('Shift');
+  await page.mouse.move(end.x, end.y, { steps: 10 });
+  // The orange pixel is outside both masks, so its preview location is observable.
+  await page.waitForFunction(([x, y]) => {
+    const node = document.querySelector('canvas[data-testid^="board-canvas-"]');
+    const pixel = node.getContext('2d').getImageData(x, y, 1, 1).data;
+    return pixel[0] === 220 && pixel[1] === 99 && pixel[2] === 11 && pixel[3] === 255;
+  }, [92 + preview[0], 90 + preview[1]], { timeout: 3000 });
+  if (shiftOnMove && !shiftOnDrop) await page.keyboard.up('Shift');
+  if (!shiftOnMove && shiftOnDrop) await page.keyboard.down('Shift');
+  await page.mouse.up();
+  if (shiftOnDrop) await page.keyboard.up('Shift');
+}
 async function tool(name) { await page.getByRole('button', { name, exact: true }).click(); }
 async function shortcut(keys) { await page.getByRole('heading', { name: '도트 작업실', exact: true }).click(); await page.keyboard.press(keys); }
 function translated(base64, dx, dy) {
@@ -117,6 +135,23 @@ try {
   assert.equal(Buffer.compare(Buffer.from(exported.data), Buffer.from(secondPixels, 'base64')), 0, 'PNG export saves moved native pixels without stationary editing aids');
   const saved = await save(); await load(saved); assert.deepEqual(await save(), saved, 'saved project preserves the moved native artwork and stationary aids');
 
+  await tool('그림 전체 이동 (V)');
+  const shiftCases = [
+    { label: 'horizontal dominance', delta: [8, 3], preview: [8, 0], result: [8, 0], shiftOnMove: true, shiftOnDrop: true },
+    { label: 'vertical dominance', delta: [3, -8], preview: [0, -8], result: [0, -8], shiftOnMove: true, shiftOnDrop: true },
+    { label: 'horizontal tie', delta: [6, 6], preview: [6, 0], result: [6, 0], shiftOnMove: true, shiftOnDrop: true },
+    // Clamping first would reduce X to 67 and Y to 69, picking the wrong axis.
+    { label: 'axis selection before clamping', delta: [90, 80], preview: [67, 0], result: [67, 0], shiftOnMove: true, shiftOnDrop: true },
+    { label: 'Shift released before drop', delta: [8, 3], preview: [8, 0], result: [8, 3], shiftOnMove: true, shiftOnDrop: false },
+    { label: 'Shift pressed before drop', delta: [3, -8], preview: [3, -8], result: [0, -8], shiftOnMove: false, shiftOnDrop: true },
+  ];
+  for (const { label, delta, preview, result, shiftOnMove, shiftOnDrop } of shiftCases) {
+    await shiftGesture(delta, preview, shiftOnMove, shiftOnDrop);
+    assertMove(await save(), translated(secondPixels, ...result), saved, label);
+    await shortcut('Control+Z');
+    assertMove(await save(), secondPixels, saved, `${label}: one undo restores the full drag`);
+  }
+
   await page.getByLabel('공통 확대 (%)').fill('235'); await tool('화면 이동 (P)'); await gesture([80, 80], [[83.3, 82.2]]);
   const fractionalBefore = await save(); await tool('그림 전체 이동 (V)'); await gesture([60.25, 60.25], [[64.25, 57.25]]);
   const fractional = await save(); assertMove(fractional, translated(secondPixels, 4, -3), fractionalBefore, 'fractional shared view converts pointer delta to the intended integer native displacement');
@@ -154,6 +189,6 @@ try {
   assert.deepEqual([explicitDestination.boards[1].overlays[0].x, explicitDestination.boards[1].overlays[0].y], [5, 5], 'explicitly selecting the destination layer enables its own movement');
   assert.deepEqual(nativePixels(explicitDestination), nativePixels(crossBoard));
   assert.deepEqual(errors, []);
-  console.log('PASS: exact bounded whole-art translation, immutable previews, shared-frame display, active-frame isolation, stationary aids/view, one-drag undo/redo, cancel/no-op history, fractional view, clean export/restore and selected-only silhouettes.');
+  console.log('PASS: exact bounded whole-art translation, Shift axis locking and modifier changes, immutable previews, shared-frame display, active-frame isolation, stationary aids/view, one-drag undo/redo, cancel/no-op history, fractional view, clean export/restore and selected-only silhouettes.');
 } catch (error) { await page.screenshot({ path: path.join(artifacts, 'move-failure.png'), fullPage: true }).catch(() => {}); throw error; }
 finally { await context.close(); await browser.close(); }

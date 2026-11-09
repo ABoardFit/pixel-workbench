@@ -137,8 +137,14 @@ export default function JoinedWorkspace(props: Props) {
     if (current.kind === 'overlay') { current.endX = Math.round(current.x + (event.clientX - current.startX) / view.zoom); current.endY = Math.round(current.y + (event.clientY - current.startY) / view.zoom); props.onOverlayChange(current.boardId, current.id, { x: current.endX, y: current.endY }); return; }
     if (current.kind === 'move') {
       const { bounds, tile } = current;
-      const dx = Math.max(-bounds.x, Math.min(tile.asset.width - bounds.x - bounds.width, Math.round((event.clientX - current.startX) / current.zoom)));
-      const dy = Math.max(-bounds.y, Math.min(tile.asset.height - bounds.y - bounds.height, Math.round((event.clientY - current.startY) / current.zoom)));
+      let dx = Math.round((event.clientX - current.startX) / current.zoom);
+      let dy = Math.round((event.clientY - current.startY) / current.zoom);
+      if (event.shiftKey) {
+        if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+        else dx = 0;
+      }
+      dx = Math.max(-bounds.x, Math.min(tile.asset.width - bounds.x - bounds.width, dx));
+      dy = Math.max(-bounds.y, Math.min(tile.asset.height - bounds.y - bounds.height, dy));
       if (dx === current.dx && dy === current.dy) return;
       current.dx = dx; current.dy = dy;
       current.pixels = translatePixels(current.before, tile.asset.width, tile.asset.height, dx, dy);
